@@ -1,0 +1,8 @@
+{
+  "name": "Copy of Copy of FNDS - Labor Cost Management",
+  "description": "A minimalist, mobile-first application for managing labor tasks, tracking costs, and processing employee payments with separate roles for Admins and Employees.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ]
+}
