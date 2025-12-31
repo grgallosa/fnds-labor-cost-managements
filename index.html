@@ -11,8 +11,8 @@
         body {
             font-family: 'Inter', sans-serif;
             -webkit-tap-highlight-color: transparent;
-            background-color: #f9fafb; /* gray-50 */
-            color: #111827; /* gray-900 */
+            background-color: #f9fafb;
+            color: #111827;
         }
         .safe-bottom {
             padding-bottom: env(safe-area-inset-bottom);
@@ -24,16 +24,19 @@
 <script type="importmap">
 {
   "imports": {
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@^2.89.0",
+    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
+    "react/": "https://esm.sh/react@^19.2.3/",
     "react": "https://esm.sh/react@^19.2.3",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
-    "react/": "https://esm.sh/react@^19.2.3/",
-    "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
-    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2"
+    "vite": "https://esm.sh/vite@^7.3.0"
   }
 }
 </script>
 </head>
 <body class="overflow-x-hidden antialiased">
     <div id="root"></div>
+    <!-- Vite entry point -->
+    <script type="module" src="/index.tsx"></script>
 </body>
 </html>
