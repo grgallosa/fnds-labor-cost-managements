@@ -1,9 +1,9 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// Connection details updated with provided credentials
-const supabaseUrl = 'https://dqvvasadceoksobmcfsd.supabase.co';
-const supabaseAnonKey = 'sb_publishable_eJunR26ZiQeTWcORiTqRhg_PERsXAzn';
+// Connection details - Using environment variables with fallbacks for local development
+const supabaseUrl = process.env.VITE_SUPABASE_URL || 'https://dqvvasadceoksobmcfsd.supabase.co';
+const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_eJunR26ZiQeTWcORiTqRhg_PERsXAzn';
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
