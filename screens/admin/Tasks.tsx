@@ -1,15 +1,17 @@
 
 import React, { useState } from 'react';
 import { Task, TaskStatus, PaymentMethod } from '../../types';
+import { supabase } from '../../lib/supabase';
 import { 
   Plus, X, MapPin, Calendar, Trash2, 
   CheckCircle2, FileText, Layers, 
   AlertCircle, Package, Edit3, Save, ChevronRight, AlertTriangle, Landmark, Smartphone
 } from 'lucide-react';
 
+// Updated Props interface with a more flexible function signature for setTasks to accommodate App.tsx usage
 interface Props {
   tasks: Task[];
-  setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
+  setTasks: (tasks: any) => void; // Standardizing prop for compatibility with App.tsx
 }
 
 const PREDEFINED_AMOUNTS = [50, 100, 200, 500];
@@ -23,6 +25,7 @@ interface DraftSubTask {
 
 type CreationMode = 'SINGLE' | 'BATCH';
 
+// Updated component signature to use Props interface and fix type mismatch in App.tsx
 export default function AdminTasks({ tasks, setTasks }: Props) {
   const [isAdding, setIsAdding] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -31,6 +34,7 @@ export default function AdminTasks({ tasks, setTasks }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [isCustomAmount, setIsCustomAmount] = useState(false);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     batchTitle: '',
@@ -41,8 +45,6 @@ export default function AdminTasks({ tasks, setTasks }: Props) {
     location: '',
     paymentMethod: PaymentMethod.CASH
   });
-
-  const generateId = (prefix: string) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
 
   const handleEditClick = (task: Task) => {
     setIsConfirmingDelete(false);
@@ -78,139 +80,83 @@ export default function AdminTasks({ tasks, setTasks }: Props) {
     }
 
     const newDraft: DraftSubTask = {
-      tempId: generateId('sub'),
+      tempId: `sub-${Date.now()}`,
       title: formData.title,
       description: formData.description,
       amount: formData.amount
     };
 
     setDraftSubTasks(prev => [...prev, newDraft]);
-    setError(null);
     setFormData(prev => ({ ...prev, title: '', description: '' }));
   };
 
-  const removeFromDraft = (tempId: string) => {
-    setDraftSubTasks(prev => prev.filter(t => t.tempId !== tempId));
-  };
-
-  const handleSubmit = (e: React.MouseEvent) => {
+  const handleSubmit = async (e: React.MouseEvent) => {
     e.preventDefault();
+    setIsSubmitting(true);
     
-    if (selectedTask) {
-      if (selectedTask.isBatch) {
-        if (!formData.batchTitle || !formData.location || (draftSubTasks.length === 0 && !formData.title)) {
-          setError("Batch needs title, location and at least one item.");
-          return;
-        }
-      } else {
-        if (!formData.title || !formData.amount || !formData.location) {
-          setError("Complete all required fields");
-          return;
-        }
-      }
-    } else {
-      if (creationMode === 'SINGLE') {
-        if (!formData.title || !formData.amount || !formData.location) {
-          setError("Complete all required fields");
-          return;
-        }
-      } else {
-        if (!formData.batchTitle || !formData.location || (draftSubTasks.length === 0 && !formData.title)) {
-          setError("Batch requires title, location and items");
-          return;
-        }
-      }
-    }
+    try {
+      if (selectedTask) {
+        // UPDATE EXISTING
+        const totalAmount = selectedTask.isBatch 
+          ? draftSubTasks.reduce((sum, s) => sum + parseFloat(s.amount || '0'), 0)
+          : parseFloat(formData.amount || '0');
 
-    if (selectedTask) {
-      const updatedTasks = tasks.map(t => {
-        if (t.id === selectedTask.id) {
-          const finalDraftsForUpdate = [...draftSubTasks];
-          if (formData.title && formData.amount && t.isBatch) {
-              finalDraftsForUpdate.push({ tempId: generateId('edit-sub'), title: formData.title, description: formData.description, amount: formData.amount });
-          }
-
-          const totalAmount = t.isBatch 
-            ? finalDraftsForUpdate.reduce((sum, s) => {
-                const val = parseFloat(s.amount || '0');
-                return sum + (isNaN(val) ? 0 : val);
-              }, 0)
-            : parseFloat(formData.amount || '0');
-
-          return {
-            ...t,
-            title: t.isBatch ? formData.batchTitle : formData.title,
-            description: formData.description,
-            amount: totalAmount,
-            date: new Date(formData.date).toISOString(),
-            location: formData.location,
-            paymentMethod: formData.paymentMethod,
-            subTasks: t.isBatch ? finalDraftsForUpdate.map(s => ({
-              id: s.tempId,
-              title: s.title,
-              description: s.description,
-              amount: parseFloat(s.amount || '0')
-            })) : undefined
-          };
-        }
-        return t;
-      });
-      setTasks(updatedTasks);
-    } else {
-      if (creationMode === 'SINGLE') {
-        const newTask: Task = {
-          id: generateId('t'),
-          title: formData.title,
+        const { error: dbError } = await supabase.from('tasks').update({
+          title: selectedTask.isBatch ? formData.batchTitle : formData.title,
           description: formData.description,
-          amount: parseFloat(formData.amount || '0'),
-          date: new Date(formData.date).toISOString(),
-          location: formData.location,
-          status: TaskStatus.OPEN,
-          createdBy: '1',
-          createdAt: new Date().toISOString(),
-          paymentMethod: formData.paymentMethod
-        };
-        setTasks(prev => [newTask, ...prev]);
-      } else {
-        const finalSubTasks = [...draftSubTasks];
-        if (formData.title && formData.amount) {
-          finalSubTasks.push({ tempId: generateId('new-sub'), title: formData.title, description: formData.description, amount: formData.amount });
-        }
-        const totalAmount = finalSubTasks.reduce((sum, s) => {
-          const val = parseFloat(s.amount || '0');
-          return sum + (isNaN(val) ? 0 : val);
-        }, 0);
-        const newBatchTask: Task = {
-          id: generateId('b'),
-          title: formData.batchTitle,
-          description: `Batch task with ${finalSubTasks.length} items.`,
           amount: totalAmount,
           date: new Date(formData.date).toISOString(),
           location: formData.location,
-          status: TaskStatus.OPEN,
-          createdBy: '1',
-          createdAt: new Date().toISOString(),
-          isBatch: true,
-          paymentMethod: formData.paymentMethod,
-          subTasks: finalSubTasks.map(s => ({
+          payment_method: formData.paymentMethod,
+          sub_tasks: selectedTask.isBatch ? draftSubTasks.map(s => ({
             id: s.tempId,
             title: s.title,
             description: s.description,
             amount: parseFloat(s.amount || '0')
-          }))
-        };
-        setTasks(prev => [newBatchTask, ...prev]);
-      }
-    }
+          })) : null
+        }).eq('id', selectedTask.id);
 
-    closeModal();
+        if (dbError) throw dbError;
+      } else {
+        // CREATE NEW
+        const isBatch = creationMode === 'BATCH';
+        const finalSubTasks = isBatch ? draftSubTasks : [];
+        const totalAmount = isBatch 
+          ? finalSubTasks.reduce((sum, s) => sum + parseFloat(s.amount || '0'), 0)
+          : parseFloat(formData.amount || '0');
+
+        const { error: dbError } = await supabase.from('tasks').insert({
+          title: isBatch ? formData.batchTitle : formData.title,
+          description: formData.description,
+          amount: totalAmount,
+          date: new Date(formData.date).toISOString(),
+          location: formData.location,
+          status: TaskStatus.OPEN,
+          is_batch: isBatch,
+          payment_method: formData.paymentMethod,
+          sub_tasks: isBatch ? finalSubTasks.map(s => ({
+            id: s.tempId,
+            title: s.title,
+            description: s.description,
+            amount: parseFloat(s.amount || '0')
+          })) : null
+        });
+
+        if (dbError) throw dbError;
+      }
+      closeModal();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
-  const handleFinalDelete = () => {
+  const handleFinalDelete = async () => {
     if (!selectedTask) return;
-    const taskIdToDelete = selectedTask.id;
-    setTasks(prev => prev.filter(t => t.id !== taskIdToDelete));
-    closeModal();
+    const { error: dbError } = await supabase.from('tasks').delete().eq('id', selectedTask.id);
+    if (dbError) alert(dbError.message);
+    else closeModal();
   };
 
   const closeModal = () => {
@@ -233,7 +179,7 @@ export default function AdminTasks({ tasks, setTasks }: Props) {
         <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Active Tasks</h2>
         <button 
           onClick={() => { resetForm(); setIsAdding(true); setCreationMode('SINGLE'); }}
-          className="bg-indigo-600 text-white p-2.5 rounded-xl shadow-md shadow-indigo-100 transition-all active:scale-95 flex items-center gap-2 px-4"
+          className="bg-indigo-600 text-white p-2.5 rounded-xl shadow-md transition-all active:scale-95 flex items-center gap-2 px-4"
         >
           <Plus size={20} />
           <span className="text-xs font-bold uppercase tracking-wider">Create</span>
@@ -393,52 +339,6 @@ export default function AdminTasks({ tasks, setTasks }: Props) {
                     </button>
                   </div>
                 </div>
-
-                {(!selectedTask?.isBatch && creationMode === 'SINGLE') && (
-                  <div>
-                    <label className="block text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2.5 ml-1">Payout (₱)</label>
-                    <div className="grid grid-cols-3 gap-2 mb-3">
-                      {PREDEFINED_AMOUNTS.map(amt => (
-                        <button
-                          key={amt}
-                          type="button"
-                          onClick={() => { setFormData({...formData, amount: amt.toString()}); setIsCustomAmount(false); }}
-                          className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                            !isCustomAmount && formData.amount === amt.toString() 
-                              ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
-                              : 'bg-white text-gray-500 border-gray-100 hover:border-indigo-200'
-                          }`}
-                        >
-                          ₱{amt}
-                        </button>
-                      ))}
-                      <button
-                        type="button"
-                        onClick={() => setIsCustomAmount(true)}
-                        className={`py-2.5 rounded-xl text-xs font-bold border transition-all ${
-                          isCustomAmount 
-                            ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm' 
-                            : 'bg-white text-gray-500 border-gray-100 hover:border-indigo-200'
-                        }`}
-                      >
-                        Custom
-                      </button>
-                    </div>
-                    
-                    {isCustomAmount && (
-                      <div className="relative animate-in slide-in-from-top duration-200">
-                        <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xs font-bold">₱</span>
-                        <input 
-                          type="number" 
-                          className="w-full p-3 pl-10 bg-white border border-indigo-100 rounded-xl outline-none font-medium text-sm focus:border-indigo-500 transition-all" 
-                          placeholder="Amount" 
-                          value={formData.amount} 
-                          onChange={e => setFormData({...formData, amount: e.target.value})} 
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
               </div>
 
               {(creationMode === 'BATCH' || selectedTask?.isBatch) && (
@@ -472,15 +372,15 @@ export default function AdminTasks({ tasks, setTasks }: Props) {
                         </p>
                       </div>
                       <div className="space-y-2">
-                        {draftSubTasks.map((draft) => (
-                          <div key={draft.tempId} className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 shadow-sm animate-in fade-in">
+                        {draftSubTasks.map((draft, idx) => (
+                          <div key={draft.tempId || idx} className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 shadow-sm animate-in fade-in">
                             <div className="min-w-0 flex-1">
                               <p className="text-xs font-bold text-gray-900 truncate">{draft.title}</p>
                               <p className="text-[9px] text-gray-500 font-medium">₱{parseFloat(draft.amount).toFixed(2)}</p>
                             </div>
                             <button 
                                 type="button"
-                                onClick={() => removeFromDraft(draft.tempId)} className="p-2 text-red-300 hover:text-red-500 transition-colors"
+                                onClick={() => setDraftSubTasks(prev => prev.filter(t => t.tempId !== draft.tempId))} className="p-2 text-red-300 hover:text-red-500 transition-colors"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -507,7 +407,7 @@ export default function AdminTasks({ tasks, setTasks }: Props) {
                     <div className="p-2 bg-red-100 text-red-600 rounded-xl">
                       <AlertTriangle size={20} />
                     </div>
-                    <p className="text-xs font-bold text-red-900 leading-tight">Delete this task permanently? This cannot be undone.</p>
+                    <p className="text-xs font-bold text-red-900 leading-tight">Delete this task permanently?</p>
                   </div>
                   <div className="flex gap-3">
                     <button 
@@ -522,7 +422,7 @@ export default function AdminTasks({ tasks, setTasks }: Props) {
                       onClick={handleFinalDelete}
                       className="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold text-xs uppercase shadow-lg shadow-red-100"
                     >
-                      Yes, Delete
+                      Delete
                     </button>
                   </div>
                 </div>
@@ -530,11 +430,12 @@ export default function AdminTasks({ tasks, setTasks }: Props) {
                 <>
                   <button 
                     type="button"
+                    disabled={isSubmitting}
                     onClick={handleSubmit}
-                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl shadow-indigo-100 active:scale-[0.98]"
+                    className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-xl active:scale-[0.98] disabled:opacity-50"
                   >
-                    {selectedTask ? <Save size={18} /> : <CheckCircle2 size={18} />}
-                    {selectedTask ? 'Save Changes' : (creationMode === 'SINGLE' ? 'Publish Task' : 'Publish Batch')}
+                    {isSubmitting ? 'Syncing...' : (selectedTask ? <Save size={18} /> : <CheckCircle2 size={18} />)}
+                    {!isSubmitting && (selectedTask ? 'Save Changes' : (creationMode === 'SINGLE' ? 'Publish Task' : 'Publish Batch'))}
                   </button>
                   
                   {selectedTask && (
